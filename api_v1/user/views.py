@@ -17,7 +17,15 @@ async def create_user(
 
 @router.get("/{user_id}/", response_model=schemas.UserSchema)
 async def get_user(
-    user_id: BigInteger,
+    telegram_id: BigInteger,
     session: AsyncSession = Depends(db_helper.scoped_session_dependency),
 ):
-    return await crud.get_user(session=session, user_id=user_id)
+    return await crud.get_user(session=session, user_id=telegram_id)
+
+@router.patch("/{user_id}/update", response_model=schemas.UserSchema)
+async def update_status_user(
+    telegram_id: BigInteger,
+    user_in: schemas.UpdateUserSchema,
+    session: AsyncSession = Depends(db_helper.scoped_session_dependency),
+):
+    return await crud.update_status(session=session, telegram_id=telegram_id, user_in=user_in)

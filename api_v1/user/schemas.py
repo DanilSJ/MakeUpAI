@@ -16,3 +16,10 @@ class RegisterSchema(BaseModel):
     status: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UpdateUserSchema(BaseModel):
+    telegram_id: int
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)

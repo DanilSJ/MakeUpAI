@@ -6,5 +6,5 @@ from .base import Base
 class Pair(Base):
     user_owner_telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_pair_telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    invite_code: Mapped[str] = mapped_column(String, nullable=True)
+    invite_code: Mapped[str] = mapped_column(String, nullable=True, unique=True)
     status: Mapped[str] = mapped_column(String)

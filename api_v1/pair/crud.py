@@ -14,7 +14,7 @@ CODE_LENGTH = 8
 
 async def generate_unique_invite_code(session: AsyncSession) -> str:
     while True:
-        invite_code = ''.join(secrets.choice(ALPHABET) for _ in range(CODE_LENGTH))
+        invite_code = "".join(secrets.choice(ALPHABET) for _ in range(CODE_LENGTH))
 
         query = select(exists().where(Pair.invite_code == invite_code))
         result = await session.execute(query)
@@ -23,12 +23,13 @@ async def generate_unique_invite_code(session: AsyncSession) -> str:
         if not is_exists:
             return invite_code
 
+
 async def create_pair(session: AsyncSession, user_in: RegisterSchema) -> Pair:
     invite_code = await generate_unique_invite_code(session)
 
-    user_in.invite_code = invite_code
+    pair_data = {**user_in.model_dump(), "invite_code": invite_code}
 
-    pair = Pair(**user_in.model_dump())
+    pair = Pair(**pair_data)
     session.add(pair)
 
     try:
@@ -39,6 +40,7 @@ async def create_pair(session: AsyncSession, user_in: RegisterSchema) -> Pair:
         raise HTTPException(status_code=400, detail=f"Error creating pair: {str(e)}")
 
     return pair
+
 
 async def join_pair(session: AsyncSession, user_in: InviteSchema) -> PairSchema:
     stmt = select(Pair).where(Pair.invite_code == user_in.invite_code)
@@ -59,11 +61,15 @@ async def join_pair(session: AsyncSession, user_in: InviteSchema) -> PairSchema:
 
     raise HTTPException(status_code=404, detail="Pier does not exist")
 
+
 async def get_pair(session: AsyncSession, pair_id: int) -> Pair | None:
     return await session.get(Pair, pair_id)
 
-async def update_status_pair(session: AsyncSession, pair_id: int, pair_in: UpdateStatusSchema) -> PairSchema:
-    stmt = select(Pair).where(Pair.pair_id == pair_id)
+
+async def update_status_pair(
+    session: AsyncSession, pair_id: int, pair_in: UpdateStatusSchema
+) -> PairSchema:
+    stmt = select(Pair).where(Pair.id == pair_id)
     result = await session.execute(stmt)
     data = result.scalars().first()
 

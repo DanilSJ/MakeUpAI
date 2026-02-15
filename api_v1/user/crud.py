@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy.engine import Result
 from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, BigInteger
+from sqlalchemy import select
 from core.models import User
 from . import schemas
 
@@ -20,11 +20,14 @@ async def create_user(session: AsyncSession, user_in: schemas.RegisterSchema) ->
     return user
 
 
-async def get_user(session: AsyncSession, user_id) -> User | None:
-    return await session.get(User, user_id)
+async def get_user(session: AsyncSession, telegram_id: int) -> User | None:
+    stmt = select(User).where(User.telegram_id == telegram_id)
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
 
 async def update_status(
-    session: AsyncSession, telegram_id: BigInteger, user_in: schemas.UpdateUserSchema
+    session: AsyncSession, telegram_id: int, user_in: schemas.UpdateUserSchema
 ) -> schemas.UserSchema:
     stmt = select(User).where(User.telegram_id == telegram_id)
     result = await session.execute(stmt)

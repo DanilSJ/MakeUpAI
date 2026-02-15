@@ -13,9 +13,6 @@ async def create_user(session: AsyncSession, user_in: schemas.RegisterSchema) ->
     if result.scalars().first():
         raise HTTPException(status_code=409, detail="User already exists")
 
-    user_in.telegram_id = user_in.telegram_id
-    user_in.username = user_in.username
-
     user = User(**user_in.model_dump())
     session.add(user)
     await session.commit()

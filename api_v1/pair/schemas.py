@@ -23,3 +23,8 @@ class InviteSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class UpdateStatusSchema(BaseModel):
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+

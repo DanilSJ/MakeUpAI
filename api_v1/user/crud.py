@@ -17,3 +17,8 @@ async def create_user(session: AsyncSession, user_in: schemas.RegisterSchema) ->
     session.add(user)
     await session.commit()
     return user
+
+
+async def get_user(session: AsyncSession, user_id) -> User | None:
+    return await session.get(User, user_id)
+

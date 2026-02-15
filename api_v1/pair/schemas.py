@@ -17,3 +17,9 @@ class RegisterSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class InviteSchema(BaseModel):
+    user_pair_telegram_id: int
+    invite_code: str
+
+    model_config = ConfigDict(from_attributes=True)
+

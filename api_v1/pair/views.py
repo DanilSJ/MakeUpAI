@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.models import db_helper
 from . import schemas
@@ -21,3 +20,18 @@ async def join_pair(
     session: AsyncSession = Depends(db_helper.scoped_session_dependency),
 ):
     return await crud.join_pair(session=session, user_in=user_in)
+
+@router.post("/{pair_id}/", response_model=schemas.PairSchema)
+async def get_pair(
+    pair_id: int,
+    session: AsyncSession = Depends(db_helper.scoped_session_dependency),
+):
+    return await crud.get_pair(session=session, pair_id=pair_id)
+
+@router.post("/{pair_id}/status/", response_model=schemas.PairSchema)
+async def update_status_pair(
+    pair_id: int,
+    pair_in: schemas.UpdateStatusSchema,
+    session: AsyncSession = Depends(db_helper.scoped_session_dependency),
+):
+    return await crud.update_status_pair(session=session, pair_id=pair_id, pair_in=pair_in)

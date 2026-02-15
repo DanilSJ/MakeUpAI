@@ -4,3 +4,4 @@
 uv.lock
 private.pem
 public.pem
+db.sqlite3

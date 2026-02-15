@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict
 class UserSchema(BaseModel):
     id: int
     telegram_id: int
-    username: int
+    username: str
     status: str
 
     model_config = ConfigDict(from_attributes=True)
@@ -19,7 +19,6 @@ class RegisterSchema(BaseModel):
 
 
 class UpdateUserSchema(BaseModel):
-    telegram_id: int
     status: str
 
     model_config = ConfigDict(from_attributes=True)

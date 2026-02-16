@@ -1,5 +1,9 @@
+from os import getenv
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 import pathlib
+
+load_dotenv()
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 
@@ -15,6 +19,9 @@ class AuthSettings(BaseSettings):
 class Settings(BaseSettings):
     db_url: str = f"sqlite+aiosqlite:///{BASE_DIR}/db.sqlite3"
     db_echo: bool = False
+
+    TOKEN_AI: str = getenv("TOKEN_AI")
+    URL_AI: str = getenv("URL_AI")
 
     AuthSettings()
 

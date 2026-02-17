@@ -21,6 +21,3 @@ async def submit_test(
     session: AsyncSession = Depends(db_helper.scoped_session_dependency),
 ):
     return await crud.submit_test(session=session, data_in=data_in)
-
-
-# TODO: в теории еще должен быть endpoint с получением информации оп всех блоках, но это не точно. Так как не понятно submit_test должен получать insight по каждому блоку или за все сразу

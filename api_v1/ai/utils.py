@@ -7,9 +7,9 @@ class AI:
         self.token = settings.TOKEN_AI
         self.headers = {"Authorization": self.token}
         self.url_ai = settings.URL_AI
-        self.timeout = 60.0
+        self.timeout = 240.0
 
-    async def send_request(self, model: str, prompt: str) -> str:
+    async def send_request(self, model: str, prompt: str, system_prompt: str) -> str:
         async with AsyncClient(timeout=self.timeout) as client:
             try:
                 result = await client.post(
@@ -17,7 +17,13 @@ class AI:
                     headers=self.headers,
                     json={
                         "model": model,
-                        "messages": [{"role": "user", "content": prompt}],
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": system_prompt,
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
                     },
                 )
 
@@ -29,14 +35,14 @@ class AI:
             except Exception as e:
                 raise Exception(f"Unexpected error: {e}")
 
-    async def deepseek(self, prompt: str) -> str:
-        return await self.send_request("deepseek-v3.2", prompt)
+    async def deepseek(self, prompt: str, system_prompt: str) -> str:
+        return await self.send_request("deepseek-v3.2", prompt, system_prompt)
 
-    async def gemini(self, prompt: str) -> str:
-        return await self.send_request("gemini-3-pro", prompt)
+    async def gemini(self, prompt: str, system_prompt: str) -> str:
+        return await self.send_request("gemini-3-pro", prompt, system_prompt)
 
-    async def claude(self, prompt: str) -> str:
-        return await self.send_request("claude-4.6-opus", prompt)
+    async def claude(self, prompt: str, system_prompt: str) -> str:
+        return await self.send_request("claude-4.6-opus", prompt, system_prompt)
 
 
 ai = AI()

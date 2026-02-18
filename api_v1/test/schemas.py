@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -36,11 +38,24 @@ class RegisterSchema(TestSessionBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SubTestSchema(BaseModel):
+    id: int
+    questions: Optional[str]
+    answer: Optional[str]
+    insight: Optional[str]
+    success: Optional[bool]
+    current_block: Optional[int]
+    total_blocks: Optional[int]
+
+    class Config:
+        from_attributes = True
+
+
 class SubmitSchema(BaseModel):
     telegram_id: int
     pair_id: int
-    answers: str
-    insight: str | None = None
+    questions: str
+    answer: str
     success: bool | None = None
     current_block: int | None = None
     total_blocks: int | None = None

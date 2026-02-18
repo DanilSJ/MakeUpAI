@@ -15,7 +15,7 @@ async def start_test(
     return await crud.start_test(session=session, data_in=data_in)
 
 
-@router.post("/submit/", response_model=schemas.TestSchema)
+@router.post("/submit/", response_model=schemas.SubTestSchema)
 async def submit_test(
     data_in: schemas.SubmitSchema,
     session: AsyncSession = Depends(db_helper.scoped_session_dependency),

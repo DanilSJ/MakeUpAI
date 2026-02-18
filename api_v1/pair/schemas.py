@@ -1,4 +1,5 @@
 from pydantic import BaseModel, ConfigDict
+from typing import Optional
 
 
 class PairSchema(BaseModel):
@@ -6,7 +7,12 @@ class PairSchema(BaseModel):
     user_owner_telegram_id: int
     user_pair_telegram_id: int | None = None
     invite_code: str
-    status: str
+
+    user_owner_complete_test: bool
+    user_pair_complete_test: bool
+    analyze_complete: bool
+    profile_complete: bool
+    passport_complete: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,6 +32,8 @@ class InviteSchema(BaseModel):
 
 
 class UpdateStatusSchema(BaseModel):
-    status: str
+    status: Optional[str] = None
+    user_owner_complete_test: Optional[bool] = None
+    user_pair_complete_test: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)

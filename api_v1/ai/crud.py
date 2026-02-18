@@ -1,10 +1,11 @@
 import re
 from datetime import datetime
+from sqlalchemy.orm import selectinload
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from core.models import TestSession, Pair, Analyze
+from core.models import TestSession, Pair, Analyze, SubTestSession, Profile, Passport
 from .prompt import (
     system_prompt,
     prompt_template,
@@ -21,7 +22,9 @@ import ast
 
 
 async def analyze_create(
-    session: AsyncSession, pair_id: int, block: int, telegram_id: int
+    session: AsyncSession,
+    pair_id: int,
+    telegram_id: int,
 ):
     pair_stmt = select(Pair).where(Pair.id == pair_id)
     pair_result = await session.execute(pair_stmt)
@@ -33,6 +36,23 @@ async def analyze_create(
     if telegram_id not in [pair.user_owner_telegram_id, pair.user_pair_telegram_id]:
         raise HTTPException(status_code=403, detail="User is not a member of this pair")
 
+    # Проверяем, делал ли пользователь уже анализ
+    existing_analyze_stmt = select(Analyze).where(
+        and_(Analyze.pair_id == pair_id, Analyze.telegram_id == telegram_id)
+    )
+    existing_analyze_result = await session.execute(existing_analyze_stmt)
+    existing_analyze = existing_analyze_result.scalars().first()
+
+    if existing_analyze:
+        # Если анализ уже существует, возвращаем его
+        return {
+            "pair_id": pair_id,
+            "telegram_id": telegram_id,
+            "analysis": existing_analyze.analysis_json,
+            "note": "Analysis already exists for this user",
+        }
+
+    # Получаем тестовые сессии с подгруженными под-тестами
     stmt = (
         select(TestSession)
         .where(
@@ -41,6 +61,7 @@ async def analyze_create(
                 TestSession.telegram_id == telegram_id,
             )
         )
+        .options(selectinload(TestSession.subtestsessions))
         .order_by(TestSession.block)
     )
 
@@ -52,37 +73,40 @@ async def analyze_create(
             status_code=404, detail="No test sessions found for this pair and user"
         )
 
-    if block:
-        filtered_sessions = [ts for ts in test_sessions if ts.block == block]
-        if not filtered_sessions:
-            raise HTTPException(
-                status_code=404, detail=f"No answers found for block {block}"
-            )
-        test_sessions = filtered_sessions
-
+    # Собираем данные из под-тестов
     user_answers = []
     for ts in test_sessions:
-        questions_list = []
-        if ts.questions:
-            try:
-                questions_list = json.loads(ts.questions)
-            except json.JSONDecodeError:
+        for subtest in ts.subtestsessions:
+            questions_list = []
+            if subtest.questions:
                 try:
-                    questions_list = ast.literal_eval(ts.questions)
-                except (ValueError, SyntaxError):
-                    questions_list = [ts.questions]
+                    questions_list = json.loads(subtest.questions)
+                except json.JSONDecodeError:
+                    try:
+                        questions_list = ast.literal_eval(subtest.questions)
+                    except (ValueError, SyntaxError):
+                        questions_list = [subtest.questions]
 
-        user_answers.append(
-            {
-                "session_id": ts.id,
-                "block": ts.block,
-                "questions": questions_list,
-                "answers": ts.answer,
-                "insight": ts.insight,
-                "success": ts.success,
-                "current_block": ts.current_block,
-                "total_blocks": ts.total_blocks,
-            }
+            user_answers.append(
+                {
+                    "test_session_id": ts.id,
+                    "subtest_id": subtest.id,
+                    "block": ts.block,
+                    "questions": questions_list,
+                    "answers": subtest.answer,
+                    "insight": subtest.insight,
+                    "success": subtest.success,
+                    "current_block": subtest.current_block,
+                    "total_blocks": subtest.total_blocks,
+                    "created_at": (
+                        subtest.create_at.isoformat() if subtest.create_at else None
+                    ),
+                }
+            )
+
+    if not user_answers:
+        raise HTTPException(
+            status_code=404, detail="No subtests found for the specified test sessions"
         )
 
     ai_response = await ai.deepseek(
@@ -98,7 +122,6 @@ async def analyze_create(
 
     if isinstance(ai_response, str):
         cleaned = ai_response.replace("```json", "").replace("```", "").strip()
-
         try:
             analysis_data = json.loads(cleaned)
         except json.JSONDecodeError:
@@ -114,31 +137,51 @@ async def analyze_create(
             else:
                 analysis_data = {"error": "No JSON found", "raw_response": cleaned}
     else:
-        # Если ai_response уже не строка (например, уже словарь)
         analysis_data = ai_response if ai_response else {}
 
     analyze_entry = Analyze(
         pair_id=pair_id,
         telegram_id=telegram_id,
-        block=block if block else 0,
+        block=0,
         analysis_json=analysis_data,
         contradictions=[],
     )
+
     session.add(analyze_entry)
+
+    # Проверяем, сделали ли оба пользователя анализ
+    other_user_id = (
+        pair.user_pair_telegram_id
+        if telegram_id == pair.user_owner_telegram_id
+        else pair.user_owner_telegram_id
+    )
+
+    other_user_analyze_stmt = select(Analyze).where(
+        and_(Analyze.pair_id == pair_id, Analyze.telegram_id == other_user_id)
+    )
+    other_user_analyze_result = await session.execute(other_user_analyze_stmt)
+    other_user_analyze = other_user_analyze_result.scalars().first()
+
+    # Если оба пользователя сделали анализ, устанавливаем analyze_complete = True
+    if other_user_analyze:
+        pair.analyze_complete = True
+
     await session.commit()
 
-    # Теперь analysis_data точно определена
     return {
         "pair_id": pair_id,
         "telegram_id": telegram_id,
-        "block": block if block else "all",
         "analysis": analysis_data,
-        "sessions_analyzed": len(user_answers),
+        "sessions_analyzed": len(test_sessions),
+        "subtests_analyzed": len(user_answers),
+        "analyze_complete": (
+            pair.analyze_complete if hasattr(pair, "analyze_complete") else False
+        ),
     }
 
 
 async def generate_profile(session: AsyncSession, pair_id: int):
-    # Получаем информацию о паре
+    # Получаем пару
     pair_stmt = select(Pair).where(Pair.id == pair_id)
     pair_result = await session.execute(pair_stmt)
     pair = pair_result.scalars().first()
@@ -146,7 +189,29 @@ async def generate_profile(session: AsyncSession, pair_id: int):
     if not pair:
         raise HTTPException(status_code=404, detail="Pair not found")
 
-    # Получаем все анализы для этой пары
+    # Проверяем, что analyze_complete = True
+    if not pair.analyze_complete:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot generate profile: analyzes are not complete for both users",
+        )
+
+    # Проверяем, существует ли уже профиль
+    profile_stmt = select(Profile).where(Profile.pair_id == pair_id)
+    profile_result = await session.execute(profile_stmt)
+    existing_profile = profile_result.scalars().first()
+
+    if existing_profile and existing_profile.profile_json:
+        # Если профиль уже существует, возвращаем его
+        return {
+            "pair_id": pair_id,
+            "user1_id": pair.user_owner_telegram_id,
+            "user2_id": pair.user_pair_telegram_id,
+            "profiles": existing_profile.profile_json,
+            "note": "Existing profile returned",
+        }
+
+    # Получаем все анализы пары
     analyze_stmt = select(Analyze).where(Analyze.pair_id == pair_id)
     analyze_result = await session.execute(analyze_stmt)
     all_analyzes = analyze_result.scalars().all()
@@ -156,7 +221,6 @@ async def generate_profile(session: AsyncSession, pair_id: int):
             status_code=404, detail="No analyze data found for this pair"
         )
 
-    # Разделяем анализы по пользователям
     user1_id = pair.user_owner_telegram_id
     user2_id = pair.user_pair_telegram_id
 
@@ -165,36 +229,8 @@ async def generate_profile(session: AsyncSession, pair_id: int):
         [a for a in all_analyzes if a.telegram_id == user2_id] if user2_id else []
     )
 
-    # Функция для создания профиля пользователя
-    async def create_user_profile(analyzes, user_id, user_name="Пользователь"):
-        if not analyzes:
-            return None
-
-        # Сортируем по блокам
-        sorted_analyzes = sorted(analyzes, key=lambda x: x.block)
-
-        # Формируем данные для промпта
-        analyses_data = []
-        for a in sorted_analyzes:
-            analyses_data.append(
-                {
-                    "block": a.block,
-                    "analysis": a.analysis_json,
-                    "contradictions": a.contradictions,
-                }
-            )
-
-        # Отправляем запрос к ИИ
-        ai_response = await ai.deepseek(
-            prompt=profile_prompt.format(
-                user_id,
-                user_name,
-                json.dumps(analyses_data, ensure_ascii=False, indent=2, default=str),
-            ),
-            system_prompt=profile_system_prompt,
-        )
-
-        # Обрабатываем ответ
+    # Вспомогательная функция парсинга AI JSON
+    def parse_ai_json(ai_response):
         if isinstance(ai_response, str):
             cleaned = ai_response.replace("```json", "").replace("```", "").strip()
             try:
@@ -212,7 +248,30 @@ async def generate_profile(session: AsyncSession, pair_id: int):
                 return {"error": "No JSON found", "raw_response": cleaned[:500]}
         return ai_response or {}
 
-    # Создаем профили для обоих пользователей
+    # Создание профиля пользователя
+    async def create_user_profile(analyzes, user_id, user_name):
+        if not analyzes:
+            return None
+        sorted_analyzes = sorted(analyzes, key=lambda x: x.block)
+        analyses_data = [
+            {
+                "block": a.block,
+                "analysis": a.analysis_json,
+                "contradictions": a.contradictions,
+                "created_at": a.create_at.isoformat() if a.create_at else None,
+            }
+            for a in sorted_analyzes
+        ]
+        ai_response = await ai.deepseek(
+            prompt=profile_prompt.format(
+                user_id,
+                user_name,
+                json.dumps(analyses_data, ensure_ascii=False, indent=2, default=str),
+            ),
+            system_prompt=profile_system_prompt,
+        )
+        return parse_ai_json(ai_response)
+
     user1_profile = await create_user_profile(
         user1_analyzes, user1_id, "Пользователь 1"
     )
@@ -222,7 +281,23 @@ async def generate_profile(session: AsyncSession, pair_id: int):
         else None
     )
 
-    # Анализ совместимости профилей (если есть оба пользователя)
+    # Сохраняем профиль
+    profile_data = {"user1": user1_profile, "user2": user2_profile}
+
+    if existing_profile:
+        existing_profile.profile_json = profile_data
+    else:
+        profile_obj = Profile(
+            pair_id=pair_id,
+            user_telegram_id=user1_id,
+            profile_json=profile_data,
+        )
+        session.add(profile_obj)
+
+    # Устанавливаем profile_complete = True
+    pair.profile_complete = True
+
+    # Совместимость
     compatibility_analysis = None
     if (
         user1_profile
@@ -230,32 +305,16 @@ async def generate_profile(session: AsyncSession, pair_id: int):
         and "error" not in user1_profile
         and "error" not in user2_profile
     ):
-
         ai_response = await ai.claude(
             prompt=compatibility_prompt.format(
-                json.dumps(user1_profile, ensure_ascii=False, indent=2, default=str),
-                json.dumps(user2_profile, ensure_ascii=False, indent=2, default=str),
+                json.dumps(user1_profile, ensure_ascii=False, indent=2),
+                json.dumps(user2_profile, ensure_ascii=False, indent=2),
             ),
             system_prompt=compatibility_system_prompt,
         )
+        compatibility_analysis = parse_ai_json(ai_response)
 
-        if isinstance(ai_response, str):
-            cleaned = ai_response.replace("```json", "").replace("```", "").strip()
-            try:
-                compatibility_analysis = json.loads(cleaned)
-            except:
-                json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-                if json_match:
-                    try:
-                        compatibility_analysis = json.loads(json_match.group())
-                    except:
-                        compatibility_analysis = {
-                            "error": "Failed to parse compatibility"
-                        }
-                else:
-                    compatibility_analysis = {"error": "No JSON found"}
-
-    # Подсчитываем противоречия
+    # Статистика
     user1_contradictions = (
         len(user1_profile.get("inconsistencies", []))
         if user1_profile and "inconsistencies" in user1_profile
@@ -267,11 +326,13 @@ async def generate_profile(session: AsyncSession, pair_id: int):
         else 0
     )
 
+    await session.commit()
+
     return {
         "pair_id": pair_id,
         "user1_id": user1_id,
         "user2_id": user2_id,
-        "profiles": {"user1": user1_profile, "user2": user2_profile},
+        "profiles": profile_data,
         "compatibility": compatibility_analysis,
         "statistics": {
             "user1_analyzes_count": len(user1_analyzes),
@@ -280,75 +341,115 @@ async def generate_profile(session: AsyncSession, pair_id: int):
             "user2_contradictions_count": user2_contradictions,
             "has_contradictions": user1_contradictions > 0 or user2_contradictions > 0,
         },
+        "profile_complete": pair.profile_complete,
     }
 
 
 async def generate_passport(session: AsyncSession, pair_id: int):
-    # Сначала получаем профили через generate_profile
-    profile_result = await generate_profile(session, pair_id)
+    # Получаем пару
+    pair_stmt = select(Pair).where(Pair.id == pair_id)
+    pair_result = await session.execute(pair_stmt)
+    pair = pair_result.scalars().first()
 
-    if not profile_result:
+    if not pair:
+        raise HTTPException(status_code=404, detail="Pair not found")
+
+    # Проверяем, что profile_complete = True
+    if not pair.profile_complete:
         raise HTTPException(
-            status_code=404, detail="Could not generate profiles for this pair"
+            status_code=400,
+            detail="Cannot generate passport: profile is not complete. Please generate profile first.",
         )
 
-    profiles = profile_result.get("profiles", {})
-    user1_profile = profiles.get("user1")
-    user2_profile = profiles.get("user2")
+    # Проверяем, существует ли уже паспорт
+    passport_stmt = select(Passport).where(Passport.pair_id == pair_id)
+    passport_result = await session.execute(passport_stmt)
+    existing_passport = passport_result.scalars().first()
 
-    if not user1_profile or not user2_profile:
+    # Если паспорт уже существует, просто возвращаем его
+    if existing_passport and existing_passport.passport_json:
+        return {
+            "pair_id": pair_id,
+            "user1_id": pair.user_owner_telegram_id,
+            "user2_id": pair.user_pair_telegram_id,
+            "passport": existing_passport.passport_json,
+            "generated_at": (
+                existing_passport.created_at.isoformat()
+                if hasattr(existing_passport, "created_at")
+                else datetime.utcnow().isoformat()
+            ),
+            "note": "Existing passport returned",
+            "passport_complete": pair.passport_complete,
+        }
+
+    # Получаем профиль пары
+    profile_stmt = select(Profile).where(Profile.pair_id == pair_id)
+    profile_result = await session.execute(profile_stmt)
+    profile = profile_result.scalars().first()
+
+    if not profile or not profile.profile_json:
         raise HTTPException(
             status_code=404,
-            detail="Both user profiles required for passport generation",
+            detail="Profile not found or empty for this pair. Please generate profile first.",
         )
 
-    # Формируем промпт для создания паспорта
+    profile_data = profile.profile_json
 
-    # Отправляем запрос к ИИ
-    ai_response = await ai.claude(
+    # Отправляем весь JSON в ИИ
+    ai_response = await ai.deepseek(
         prompt=passport_prompt.format(
-            json.dumps(user1_profile, ensure_ascii=False, indent=2, default=str),
-            json.dumps(user2_profile, ensure_ascii=False, indent=2, default=str),
+            json.dumps(profile_data, ensure_ascii=False, indent=2, default=str)
         ),
         system_prompt=passport_system_prompt,
     )
 
-    # Обрабатываем ответ
+    # Парсим ответ AI, чтобы получить словарь
     if isinstance(ai_response, str):
+        # Пытаемся извлечь JSON из ответа
         cleaned = ai_response.replace("```json", "").replace("```", "").strip()
         try:
             passport_data = json.loads(cleaned)
         except json.JSONDecodeError:
+            # Если не удалось распарсить как JSON, ищем JSON в тексте
             json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
             if json_match:
                 try:
                     passport_data = json.loads(json_match.group())
                 except:
+                    # Если все еще не удалось, создаем структуру с текстовым ответом
                     passport_data = {
-                        "error": "Failed to parse JSON",
-                        "raw_response": cleaned[:500],
+                        "content": cleaned,
+                        "format": "text",
+                        "note": "Response is in text format",
                     }
             else:
+                # Создаем словарь с текстовым ответом
                 passport_data = {
-                    "error": "No JSON found",
-                    "raw_response": cleaned[:500],
+                    "content": cleaned,
+                    "format": "text",
+                    "note": "Response is in text format",
                 }
     else:
-        passport_data = ai_response or {}
+        passport_data = ai_response if ai_response else {}
 
-    # Можно сохранить паспорт в БД, если нужно
-    # from core.models import Passport
-    # passport_entry = Passport(
-    #     pair_id=pair_id,
-    #     passport_data=passport_data
-    # )
-    # session.add(passport_entry)
-    # await session.commit()
+    # Сохраняем паспорт
+    if existing_passport:
+        existing_passport.passport_json = passport_data
+    else:
+        new_passport = Passport(pair_id=pair_id, passport_json=passport_data)
+        session.add(new_passport)
+
+    # Устанавливаем passport_complete = True
+    pair.passport_complete = True
+
+    # Сохраняем изменения
+    await session.commit()
 
     return {
         "pair_id": pair_id,
-        "user1_id": profile_result["user1_id"],
-        "user2_id": profile_result["user2_id"],
+        "user1_id": pair.user_owner_telegram_id,
+        "user2_id": pair.user_pair_telegram_id,
         "passport": passport_data,
         "generated_at": datetime.utcnow().isoformat(),
+        "passport_complete": pair.passport_complete,
     }

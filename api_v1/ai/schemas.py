@@ -6,9 +6,11 @@ from pydantic import BaseModel, ConfigDict
 class AnalyzeResponseSchema(BaseModel):
     pair_id: int
     telegram_id: int
-    block: int
     analysis: Dict[str, Any]
-    sessions_analyzed: int
+    sessions_analyzed: Optional[int] = None
+    subtests_analyzed: Optional[int] = None
+    note: Optional[str] = None
+    analyze_complete: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,7 +38,9 @@ class ProfileResponseSchema(BaseModel):
     user2_id: Optional[int] = None
     profiles: Dict[str, Any]
     compatibility: Optional[Dict[str, Any]] = None
-    statistics: Dict[str, Any]
+    statistics: Optional[Dict[str, Any]] = None  # Сделали опциональным
+    note: Optional[str] = None
+    profile_complete: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,5 +51,7 @@ class PassportResponseSchema(BaseModel):
     user2_id: int
     passport: Dict[str, Any]
     generated_at: str
+    note: Optional[str] = None
+    passport_complete: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)

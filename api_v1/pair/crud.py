@@ -4,7 +4,7 @@ import string
 from fastapi import HTTPException
 from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, exists
+from sqlalchemy import select, exists, or_
 from core.models import Pair
 from .schemas import PairSchema, RegisterSchema, InviteSchema, UpdateStatusSchema
 
@@ -75,7 +75,9 @@ async def update_status_pair(
 
     if data:
         try:
-            for field, value in pair_in.model_dump(exclude_unset=True).items():
+            # Обновляем только те поля, которые были переданы (не None)
+            update_data = pair_in.model_dump(exclude_unset=True)
+            for field, value in update_data.items():
                 setattr(data, field, value)
 
             await session.commit()
@@ -85,4 +87,33 @@ async def update_status_pair(
         except StatementError:
             raise HTTPException(status_code=400, detail="Incorrect arguments")
 
-    raise HTTPException(status_code=404, detail="Pier does not exist")
+    raise HTTPException(status_code=404, detail="Pair does not exist")
+
+
+# Новая функция для получения пары по user_owner_telegram_id или user_pair_telegram_id
+async def get_pair_by_user_telegram_id(
+    session: AsyncSession, telegram_id: int
+) -> Pair | None:
+    """
+    Получить пару, где telegram_id является либо владельцем, либо участником пары
+    """
+    stmt = select(Pair).where(
+        or_(
+            Pair.user_owner_telegram_id == telegram_id,
+            Pair.user_pair_telegram_id == telegram_id,
+        )
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
+# Новая функция для получения пары по invite_code
+async def get_pair_by_invite_code(
+    session: AsyncSession, invite_code: str
+) -> Pair | None:
+    """
+    Получить пару по invite_code
+    """
+    stmt = select(Pair).where(Pair.invite_code == invite_code)
+    result = await session.execute(stmt)
+    return result.scalars().first()

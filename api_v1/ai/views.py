@@ -8,16 +8,14 @@ router = APIRouter()
 
 
 @router.post("/analyze/", response_model=schemas.AnalyzeResponseSchema)
-async def start_test(
+async def start_analyze(
     pair_id: int,
-    block: int,
     telegram_id: int,
     session: AsyncSession = Depends(db_helper.scoped_session_dependency),
 ):
     return await crud.analyze_create(
         session=session,
         pair_id=pair_id,
-        block=block,
         telegram_id=telegram_id,
     )
 

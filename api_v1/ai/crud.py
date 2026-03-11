@@ -280,12 +280,12 @@ async def generate_passport(session: AsyncSession, pair_id: int):
     passport_result = await session.execute(passport_stmt)
     existing_passport = passport_result.scalars().first()
 
-    if existing_passport and existing_passport.profile_text:
+    if existing_passport and existing_passport.passport_text:
         return {
             "pair_id": pair_id,
             "user1_id": pair.user_owner_telegram_id,
             "user2_id": pair.user_pair_telegram_id,
-            "passport": existing_passport.profile_text,
+            "passport": existing_passport.passport_text,
             "generated_at": datetime.utcnow().isoformat(),
             "passport_complete": pair.passport_complete,
             "note": existing_passport and "Existing passport returned" or None,
@@ -295,11 +295,11 @@ async def generate_passport(session: AsyncSession, pair_id: int):
     profile_result = await session.execute(profile_stmt)
     profile = profile_result.scalars().first()
 
-    if not profile or not profile.passport_text:
+    if not profile or not profile.profile_text:
         raise HTTPException(status_code=404, detail="Profile not found")
 
     ai_response = await ai.deepseek(
-        prompt=passport_prompt.format(profile.passport_text),
+        prompt=passport_prompt.format(profile.profile_text),
         system_prompt=passport_system_prompt,
     )
 
@@ -308,7 +308,7 @@ async def generate_passport(session: AsyncSession, pair_id: int):
     if existing_passport:
         existing_passport.passport_text = passport_text
     else:
-        session.add(Passport(pair_id=pair_id, profile_text=passport_text))
+        session.add(Passport(pair_id=pair_id, passport_text=passport_text))
 
     pair.passport_complete = True
 

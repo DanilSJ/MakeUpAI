@@ -1,8 +1,8 @@
 """remove json ai responses
 
-Revision ID: 1feda51c0884
+Revision ID: 52c52344bbdf
 Revises: 
-Create Date: 2026-03-11 20:20:44.166274
+Create Date: 2026-03-11 21:11:25.890065
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '1feda51c0884'
+revision: str = '52c52344bbdf'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -63,7 +63,7 @@ def upgrade() -> None:
     )
     op.create_table('passports',
     sa.Column('pair_id', sa.Integer(), nullable=False),
-    sa.Column('profile_text', sa.Text(), nullable=True),
+    sa.Column('passport_text', sa.Text(), nullable=True),
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('create_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.ForeignKeyConstraint(['pair_id'], ['pairs.id'], ondelete='CASCADE'),

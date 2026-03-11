@@ -1,4 +1,4 @@
-from sqlalchemy import String, BigInteger, ForeignKey, JSON, Float, Boolean
+from sqlalchemy import String, BigInteger, ForeignKey, JSON, Float, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 from typing import TYPE_CHECKING, Optional
@@ -63,7 +63,7 @@ class Profile(Base):
     )  # ID пользователя в телеграм
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    profile_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    profile_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Отношение обратно к паре
     pair: Mapped["Pair"] = relationship(
@@ -81,7 +81,7 @@ class Passport(Base):
         index=True,
     )
 
-    passport_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    passport_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Отношение обратно к паре
     pair: Mapped["Pair"] = relationship("Pair", back_populates="passport")

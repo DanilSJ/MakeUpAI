@@ -120,24 +120,7 @@ async def analyze_create(
         system_prompt=system_prompt,
     )
 
-    if isinstance(ai_response, str):
-        cleaned = ai_response.replace("```json", "").replace("```", "").strip()
-        try:
-            analysis_data = json.loads(cleaned)
-        except json.JSONDecodeError:
-            json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-            if json_match:
-                try:
-                    analysis_data = json.loads(json_match.group())
-                except:
-                    analysis_data = {
-                        "error": "Failed to parse JSON",
-                        "raw_response": cleaned,
-                    }
-            else:
-                analysis_data = {"error": "No JSON found", "raw_response": cleaned}
-    else:
-        analysis_data = ai_response if ai_response else {}
+    analysis_data = ai_response
 
     analyze_entry = Analyze(
         pair_id=pair_id,
@@ -229,25 +212,6 @@ async def generate_profile(session: AsyncSession, pair_id: int):
         [a for a in all_analyzes if a.telegram_id == user2_id] if user2_id else []
     )
 
-    # Вспомогательная функция парсинга AI JSON
-    def parse_ai_json(ai_response):
-        if isinstance(ai_response, str):
-            cleaned = ai_response.replace("```json", "").replace("```", "").strip()
-            try:
-                return json.loads(cleaned)
-            except json.JSONDecodeError:
-                json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-                if json_match:
-                    try:
-                        return json.loads(json_match.group())
-                    except:
-                        return {
-                            "error": "Failed to parse JSON",
-                            "raw_response": cleaned[:500],
-                        }
-                return {"error": "No JSON found", "raw_response": cleaned[:500]}
-        return ai_response or {}
-
     # Создание профиля пользователя
     async def create_user_profile(analyzes, user_id, user_name):
         if not analyzes:
@@ -270,7 +234,6 @@ async def generate_profile(session: AsyncSession, pair_id: int):
             ),
             system_prompt=profile_system_prompt,
         )
-        return parse_ai_json(ai_response)
 
     user1_profile = await create_user_profile(
         user1_analyzes, user1_id, "Пользователь 1"
@@ -312,7 +275,7 @@ async def generate_profile(session: AsyncSession, pair_id: int):
             ),
             system_prompt=compatibility_system_prompt,
         )
-        compatibility_analysis = parse_ai_json(ai_response)
+        compatibility_analysis = ai_response
 
     # Статистика
     user1_contradictions = (
@@ -403,34 +366,7 @@ async def generate_passport(session: AsyncSession, pair_id: int):
         system_prompt=passport_system_prompt,
     )
 
-    # Парсим ответ AI, чтобы получить словарь
-    if isinstance(ai_response, str):
-        # Пытаемся извлечь JSON из ответа
-        cleaned = ai_response.replace("```json", "").replace("```", "").strip()
-        try:
-            passport_data = json.loads(cleaned)
-        except json.JSONDecodeError:
-            # Если не удалось распарсить как JSON, ищем JSON в тексте
-            json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-            if json_match:
-                try:
-                    passport_data = json.loads(json_match.group())
-                except:
-                    # Если все еще не удалось, создаем структуру с текстовым ответом
-                    passport_data = {
-                        "content": cleaned,
-                        "format": "text",
-                        "note": "Response is in text format",
-                    }
-            else:
-                # Создаем словарь с текстовым ответом
-                passport_data = {
-                    "content": cleaned,
-                    "format": "text",
-                    "note": "Response is in text format",
-                }
-    else:
-        passport_data = ai_response if ai_response else {}
+    passport_data = ai_response
 
     # Сохраняем паспорт
     if existing_passport:

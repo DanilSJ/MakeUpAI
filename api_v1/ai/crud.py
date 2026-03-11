@@ -305,7 +305,7 @@ async def generate_profile(session: AsyncSession, pair_id: int):
         and "error" not in user1_profile
         and "error" not in user2_profile
     ):
-        ai_response = await ai.claude(
+        ai_response = await ai.deepseek(
             prompt=compatibility_prompt.format(
                 json.dumps(user1_profile, ensure_ascii=False, indent=2),
                 json.dumps(user2_profile, ensure_ascii=False, indent=2),

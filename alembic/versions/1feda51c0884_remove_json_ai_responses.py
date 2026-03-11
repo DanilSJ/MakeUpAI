@@ -1,8 +1,8 @@
-"""test
+"""remove json ai responses
 
-Revision ID: ac417602b2c1
+Revision ID: 1feda51c0884
 Revises: 
-Create Date: 2026-02-18 21:37:36.281458
+Create Date: 2026-03-11 20:20:44.166274
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'ac417602b2c1'
+revision: str = '1feda51c0884'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -55,8 +55,7 @@ def upgrade() -> None:
     sa.Column('pair_id', sa.Integer(), nullable=False),
     sa.Column('telegram_id', sa.BigInteger(), nullable=False),
     sa.Column('block', sa.Integer(), nullable=False),
-    sa.Column('analysis_json', sa.JSON(), nullable=True),
-    sa.Column('contradictions', sa.JSON(), nullable=True),
+    sa.Column('analysis_json', sa.Text(), nullable=True),
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('create_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.ForeignKeyConstraint(['pair_id'], ['pairs.id'], ondelete='CASCADE'),
@@ -64,7 +63,7 @@ def upgrade() -> None:
     )
     op.create_table('passports',
     sa.Column('pair_id', sa.Integer(), nullable=False),
-    sa.Column('passport_json', sa.JSON(), nullable=True),
+    sa.Column('profile_text', sa.Text(), nullable=True),
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('create_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.ForeignKeyConstraint(['pair_id'], ['pairs.id'], ondelete='CASCADE'),
@@ -75,7 +74,7 @@ def upgrade() -> None:
     sa.Column('pair_id', sa.Integer(), nullable=False),
     sa.Column('user_telegram_id', sa.BigInteger(), nullable=False),
     sa.Column('name', sa.String(), nullable=True),
-    sa.Column('profile_json', sa.JSON(), nullable=True),
+    sa.Column('profile_text', sa.Text(), nullable=True),
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('create_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.ForeignKeyConstraint(['pair_id'], ['pairs.id'], ondelete='CASCADE'),

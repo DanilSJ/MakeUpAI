@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, BigInteger, JSON, ForeignKey
+from sqlalchemy import Integer, BigInteger, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 
@@ -8,9 +8,6 @@ class Analyze(Base):
     telegram_id: Mapped[int] = mapped_column(BigInteger)
     block: Mapped[int] = mapped_column(Integer)
 
-    # JSON ответ от AI
-    analysis_json: Mapped[dict] = mapped_column(JSON, nullable=True)
-    contradictions: Mapped[list] = mapped_column(JSON, nullable=True, default=[])
+    analysis_json: Mapped[str] = mapped_column(Text, nullable=True)
 
-    # Обратная связь с Pair
     pair: Mapped["Pair"] = relationship("Pair", back_populates="analyzes")

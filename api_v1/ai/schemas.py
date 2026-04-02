@@ -1,4 +1,3 @@
-# schemas.py
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ConfigDict
 
@@ -11,6 +10,9 @@ class AnalyzeResponseSchema(BaseModel):
     subtests_analyzed: Optional[int] = None
     note: Optional[str] = None
     analyze_complete: Optional[bool] = None
+    # Новые поля — результат авто-генерации паспорта
+    passport: Optional[str] = None
+    passport_complete: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 

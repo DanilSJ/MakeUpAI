@@ -44,12 +44,14 @@ async def analyze_create(
     existing_analyze = existing_analyze_result.scalars().first()
 
     if existing_analyze:
-        # Если анализ уже существует, возвращаем его
+        # FIX Баг 3: Даже при раннем возврате проверяем analyze_complete
+        # и возвращаем его в ответе
         return {
             "pair_id": pair_id,
             "telegram_id": telegram_id,
             "analysis": existing_analyze.analysis_json,
             "note": "Analysis already exists for this user",
+            "analyze_complete": pair.analyze_complete,
         }
 
     # Получаем тестовые сессии с подгруженными под-тестами
@@ -150,14 +152,32 @@ async def analyze_create(
 
     await session.commit()
 
+    # FIX Баг 1: Автоматический запуск цепочки profile → passport
+    # Когда оба пользователя завершили анализ, автоматически генерируем
+    # профиль и паспорт без отдельных вызовов API
+    passport_text = None
+    if pair.analyze_complete and not pair.passport_complete:
+        try:
+            profile_result = await generate_profile(session=session, pair_id=pair_id)
+            passport_result = await generate_passport(session=session, pair_id=pair_id)
+            passport_text = passport_result.get("passport")
+        except Exception as e:
+            # Логируем ошибку, но не роняем основной ответ
+            print(
+                f"[AUTO-PIPELINE] Error generating profile/passport for pair {pair_id}: {e}"
+            )
+
     return {
         "pair_id": pair_id,
         "telegram_id": telegram_id,
         "analysis": analysis_data,
         "sessions_analyzed": len(test_sessions),
         "subtests_analyzed": len(user_answers),
-        "analyze_complete": (
-            pair.analyze_complete if hasattr(pair, "analyze_complete") else False
+        "analyze_complete": pair.analyze_complete,
+        # Новое поле — если паспорт сгенерирован автоматически, он тут
+        "passport": passport_text,
+        "passport_complete": (
+            pair.passport_complete if hasattr(pair, "passport_complete") else False
         ),
     }
 
@@ -186,6 +206,7 @@ async def generate_profile(session: AsyncSession, pair_id: int):
             "user2_id": pair.user_pair_telegram_id,
             "profiles": existing_profile.profile_text,
             "note": "Existing profile returned",
+            "profile_complete": pair.profile_complete,
         }
 
     analyze_stmt = select(Analyze).where(Analyze.pair_id == pair_id)
@@ -221,13 +242,31 @@ async def generate_profile(session: AsyncSession, pair_id: int):
             system_prompt=profile_system_prompt,
         )
 
-    profile_text = f"""
-USER 1 PROFILE
+    # FIX Баг 2: Генерируем совместимость ДО формирования profile_text,
+    # чтобы включить её в сохранённые данные
+    compatibility_analysis = None
+    if user1_profile and user2_profile:
+        compatibility_analysis = await ai.deepseek(
+            prompt=compatibility_prompt.format(
+                user1_profile,
+                user2_profile,
+            ),
+            system_prompt=compatibility_system_prompt,
+        )
+
+    # FIX Баг 2: Включаем compatibility_analysis в profile_text,
+    # чтобы он был доступен при генерации паспорта
+    profile_text = f"""USER 1 PROFILE
 {user1_profile}
 
 USER 2 PROFILE
-{user2_profile}
-"""
+{user2_profile}"""
+
+    if compatibility_analysis:
+        profile_text += f"""
+
+COMPATIBILITY ANALYSIS
+{compatibility_analysis}"""
 
     if existing_profile:
         existing_profile.profile_text = profile_text
@@ -241,18 +280,6 @@ USER 2 PROFILE
         )
 
     pair.profile_complete = True
-
-    compatibility_analysis = None
-
-    if user1_profile and user2_profile:
-
-        compatibility_analysis = await ai.deepseek(
-            prompt=compatibility_prompt.format(
-                user1_profile,
-                user2_profile,
-            ),
-            system_prompt=compatibility_system_prompt,
-        )
 
     await session.commit()
 
@@ -273,6 +300,13 @@ async def generate_passport(session: AsyncSession, pair_id: int):
     if not pair:
         raise HTTPException(status_code=404, detail="Pair not found")
 
+    # FIX: Если профиль ещё не создан, но анализ завершён —
+    # автоматически генерируем профиль
+    if not pair.profile_complete and pair.analyze_complete:
+        await generate_profile(session=session, pair_id=pair_id)
+        # Перечитываем pair после коммита в generate_profile
+        await session.refresh(pair)
+
     if not pair.profile_complete:
         raise HTTPException(status_code=400, detail="Profile not complete")
 
@@ -288,7 +322,7 @@ async def generate_passport(session: AsyncSession, pair_id: int):
             "passport": existing_passport.passport_text,
             "generated_at": datetime.utcnow().isoformat(),
             "passport_complete": pair.passport_complete,
-            "note": existing_passport and "Existing passport returned" or None,
+            "note": "Existing passport returned",
         }
 
     profile_stmt = select(Profile).where(Profile.pair_id == pair_id)
@@ -320,5 +354,4 @@ async def generate_passport(session: AsyncSession, pair_id: int):
         "passport": passport_text,
         "generated_at": datetime.utcnow().isoformat(),
         "passport_complete": pair.passport_complete,
-        "note": existing_passport and "Existing passport returned" or None,
     }
